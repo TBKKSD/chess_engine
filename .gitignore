@@ -13,6 +13,7 @@
 
 # Linker files
 *.ilk
+*.exp
 
 # Debugger Files
 *.pdb
@@ -43,6 +44,9 @@
 build/
 Build/
 build-*/
+bin/
+obj/
+out/
 
 # CMake generated files
 CMakeFiles/
@@ -67,3 +71,12 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Editor / IDE
+.vs/
+.vscode/
+*.user
+
+# OS
+Thumbs.db
+desktop.ini
