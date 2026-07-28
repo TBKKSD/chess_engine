@@ -1,37 +1,30 @@
 #include <cstdint>
 #include <string>
 #include <iostream>
+#include <sstream>
+#include <cctype>
 
 using U64 = uint64_t;
 
 enum Piece {WP, WN, WB, WR, WQ, WK,
-            BP, BN, BB, BR, BQ, BK};
-
-enum Square {A1, B1, C1, D1, E1, F1, G1, H1,
-            A2, B2, C2, D2, E2, F2, G2, H2,
-            A3, B3, C3, D3, E3, F3, G3, H3,
-            A4, B4, C4, D4, E4, F4, G4, H4,
-            A5, B5, C5, D5, E5, F5, G5, H5,
-            A6, B6, C6, D6, E6, F6, G6, H6,
-            A7, B7, C7, D7, E7, F7, G7, H7,
-            A8, B8, C8, D8, E8, F8, G8, H8};
+            BP, BN, BB, BR, BQ, BK, NO_PIECE};
 
 struct Position {
     U64 pieces[12] = {0}; 
     U64 occupied[3] = {0};
     bool whiteToMove = true;
     int castlingRights = 0;
-    int enPassantSquare = -1;
+    int epSquare = -1;
     int halfmoveClock = 0;
 };
 
-inline void setBit(U64 &b, Square square) {
+inline void setBit(U64 &b, int square) {
     b |= (1ULL << square);
 }
-inline void clearBit(U64 &b, Square square) {
+inline void clearBit(U64 &b, int square) {
     b &= ~(1ULL << square);
 }
-inline bool getBit(const U64 &b, Square square) {
+inline bool getBit(const U64 &b, int square) {
     return (b >> square) & 1ULL;
 }
 
@@ -41,4 +34,84 @@ inline int popLsb(U64 &b) {
     int sq = __builtin_ctzll(b);
     b &= b - 1;
     return sq;
+}
+
+static const std::string pieceToChar = "PNBRQKpnbrqk";
+
+int charToPiece(char c){
+    size_t i = pieceToChar.find(c);
+    return (i == std::string::npos) ? NO_PIECE : (int)i;
+}
+
+void parseFEN(Position &pos, const std::string &fen) {
+    pos = Position{};
+
+    std::istringstream ss(fen);
+    std::string board, side, castle, ep;
+    ss >> board >> side >> castle >> ep;
+    ss >> pos.halfmoveClock;
+
+    int rank = 7, file = 0;
+    for (char c : board) {
+        if (c == '/') {
+            rank--;
+            file = 0;
+        } else if (std::isdigit((unsigned char)c)) {
+            file += c - '0';
+        } else {
+            int p = charToPiece(c);
+            if (p != NO_PIECE) setBit(pos.pieces[p], rank * 8 + file);
+            file++;
+        }
+    }
+
+    // move side
+    pos.whiteToMove = (side == "w");
+
+    // castling rights
+    for (char c : castle) {
+        if (c == 'K') pos.castlingRights |= 1; // White kingside
+        if (c == 'Q') pos.castlingRights |= 2; // White queenside
+        if (c == 'k') pos.castlingRights |= 4; // Black kingside
+        if (c == 'q') pos.castlingRights |= 8; // Black queenside
+    }
+
+    // en passant square
+    if (ep != "-" && ep.size() >= 2) 
+        pos.epSquare = (ep[0] - 'a') + (ep[1] - '1') * 8;
+
+    // occupied squares
+    for (int p = WP; p <= WK; ++p) pos.occupied[0] |= pos.pieces[p];
+    for (int p = BP; p <= BK; ++p) pos.occupied[1] |= pos.pieces[p];
+    pos.occupied[2] = pos.occupied[0] | pos.occupied[1];
+}
+
+int pieceAt(const Position &pos, int square) {
+    for (int p = 0; p < 12; ++p) {
+        if (getBit(pos.pieces[p], square)) return p;
+    }
+    return NO_PIECE;
+}
+
+void printBoard(const Position &pos) {
+    for (int rank = 7; rank >= 0; --rank) {
+        std::cout << (rank + 1) << "  ";
+        for (int file = 0; file < 8; ++file) {
+            int p = pieceAt(pos, rank * 8 + file);
+            std::cout << (p == NO_PIECE ? '.' : pieceToChar[p]) << ' ';
+        }
+        std::cout << '\n';
+    }
+    std::cout << "\n   a b c d e f g h\n\n";
+    std::cout << "เดิน: " << (pos.whiteToMove ? "ขาว" : "ดำ")
+              << " | castling: " << pos.castlingRights
+              << " | ep: "       << pos.epSquare << "\n";
+}
+
+int main() {
+    Position pos;
+    std::string fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    parseFEN(pos, fen);
+    printBoard(pos);
+    return 0;
 }
