@@ -1,42 +1,10 @@
-#include <cstdint>
-#include <string>
+#include "position.h"
+
 #include <iostream>
 #include <sstream>
 #include <cctype>
 
-using U64 = uint64_t;
-
-enum Piece {WP, WN, WB, WR, WQ, WK,
-            BP, BN, BB, BR, BQ, BK, NO_PIECE};
-
-struct Position {
-    U64 pieces[12] = {0}; 
-    U64 occupied[3] = {0};
-    bool whiteToMove = true;
-    int castlingRights = 0;
-    int epSquare = -1;
-    int halfmoveClock = 0;
-};
-
-inline void setBit(U64 &b, int square) {
-    b |= (1ULL << square);
-}
-inline void clearBit(U64 &b, int square) {
-    b &= ~(1ULL << square);
-}
-inline bool getBit(const U64 &b, int square) {
-    return (b >> square) & 1ULL;
-}
-
-inline int popCount(U64 b) { return __builtin_popcountll(b);  }
-
-inline int popLsb(U64 &b) {
-    int sq = __builtin_ctzll(b);
-    b &= b - 1;
-    return sq;
-}
-
-static const std::string pieceToChar = "PNBRQKpnbrqk";
+const std::string pieceToChar = "PNBRQKpnbrqk";
 
 int charToPiece(char c){
     size_t i = pieceToChar.find(c);
@@ -77,7 +45,7 @@ void parseFEN(Position &pos, const std::string &fen) {
     }
 
     // en passant square
-    if (ep != "-" && ep.size() >= 2) 
+    if (ep != "-" && ep.size() >= 2)
         pos.epSquare = (ep[0] - 'a') + (ep[1] - '1') * 8;
 
     // occupied squares
@@ -108,10 +76,3 @@ void printBoard(const Position &pos) {
               << " | ep: "       << pos.epSquare << "\n";
 }
 
-int main() {
-    Position pos;
-    std::string fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-    parseFEN(pos, fen);
-    printBoard(pos);
-    return 0;
-}
