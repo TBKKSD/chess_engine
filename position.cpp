@@ -71,7 +71,7 @@ void printBoard(const Position &pos) {
         std::cout << '\n';
     }
     std::cout << "\n   a b c d e f g h\n\n";
-    std::cout << "เดิน: " << (pos.whiteToMove ? "ขาว" : "ดำ")
+    std::cout << "Move: " << (pos.whiteToMove ? "White" : "Black")
               << " | castling: " << pos.castlingRights
               << " | ep: "       << pos.epSquare << "\n";
 }

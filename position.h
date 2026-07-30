@@ -22,7 +22,7 @@ inline bool getBit(const U64 &b, int square) {
     return (b >> square) & 1ULL;
 }
 
-inline int popCount(U64 b) { return __builtin_popcountll(b); }
+inline int popcount(U64 b) { return __builtin_popcountll(b); }
 
 inline int popLsb(U64 &b) {
     int sq = __builtin_ctzll(b);
