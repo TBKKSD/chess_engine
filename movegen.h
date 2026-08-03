@@ -5,3 +5,5 @@
 
 void genKnightMoves(Position &pos, MoveList &moves);
 void genKingMoves(Position &pos, MoveList &moves);
+void genPawnMoves(Position &pos, MoveList &moves);
+void genSlidingMoves(const Position &pos, MoveList &moves);
