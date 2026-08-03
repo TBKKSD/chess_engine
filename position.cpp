@@ -111,3 +111,157 @@ bool inCheck(const Position &pos) {
     int kingSquare = lsb(pos.pieces[pos.whiteToMove ? WK : BK]);
     return isSquareAttacked(pos, kingSquare, !pos.whiteToMove);
 }
+
+static constexpr auto castlingMask = [] {
+    std::array<int, 64> m{};
+    for (auto &v : m) v = 15;
+    m[E1] = 12; m[A1] = 13; m[H1] = 14;
+    m[E8] = 3;  m[A8] = 7;  m[H8] = 11;
+    return m;
+}();
+
+
+void doMove(Position &pos, Move move, Undo &undo) {
+    int from = fromMove(move), to = toMove(move), flags = flagsMove(move);
+    bool white = pos.whiteToMove;
+    int us = white ? 0 : 1, them = us ^ 1;
+
+    int piece = pieceAt(pos, from);
+    int capturedPiece = pieceAt(pos, to);
+    undo.capturedPiece = capturedPiece;
+
+    // Clear Captured Piece
+    if (capturedPiece != NO_PIECE) {
+        clearBit(pos.pieces[capturedPiece], to);
+        clearBit(pos.occupied[them], to);
+    }
+
+    // Move Piece
+    clearBit(pos.pieces[piece], from);
+    setBit(pos.pieces[piece], to);
+    clearBit(pos.occupied[us], from);
+    setBit(pos.occupied[us], to);
+    undo.castlingRights = pos.castlingRights;
+    undo.epSquare = pos.epSquare;
+
+    //en passant capture
+    if (flags == EP_CAPTURE) {
+        int capSquare = white ? to - 8 : to + 8;
+        int capPiece = white ? BP : WP;
+        clearBit(pos.pieces[capPiece], capSquare);
+        clearBit(pos.occupied[them], capSquare);
+        undo.epSquare = pos.epSquare; 
+    }
+
+    // Castling
+    if (flags == KING_CASTLE) {
+        int rookfrom = (white ? H1 : H8);
+        int rookto = (white ? F1 : F8);
+        undo.castlingRights = pos.castlingRights;
+
+        int rookPiece = white ? WR : BR;
+        clearBit(pos.pieces[rookPiece], rookfrom);
+        setBit(pos.pieces[rookPiece], rookto);
+        clearBit(pos.occupied[us], rookfrom);
+        setBit(pos.occupied[us], rookto);
+    }
+    if (flags == QUEEN_CASTLE) {
+        int rookfrom = (white ? A1 : A8);
+        int rookto = (white ? D1 : D8);
+        undo.castlingRights = pos.castlingRights;
+
+        int rookPiece = white ? WR : BR;
+        clearBit(pos.pieces[rookPiece], rookfrom);
+        setBit(pos.pieces[rookPiece], rookto);
+        clearBit(pos.occupied[us], rookfrom);
+        setBit(pos.occupied[us], rookto);
+    }
+
+    // Promotion
+    if (flags >= PROMO_N) {
+        int promoted = us * 6 + WN + (flags & 3);
+        clearBit(pos.pieces[piece], to); // Remove pawn
+        setBit(pos.pieces[promoted], to); // Add promoted piece
+    }
+
+    //Update castling rights
+    pos.castlingRights &= castlingMask[from];
+    pos.castlingRights &= castlingMask[to];
+
+    // Update en passant square
+    pos.epSquare = (flags == DOUBLE_PUSH) ? (white ? to - 8 : to + 8) : -1;
+
+    // Update halfmove clock
+    undo.halfmoveClock = pos.halfmoveClock;
+    bool isPawn = (piece == WP || piece == BP);
+    pos.halfmoveClock = (isPawn || capturedPiece != NO_PIECE) ? 0 : pos.halfmoveClock + 1;
+
+    // Update occupied squares and side to move
+    pos.occupied[2] = pos.occupied[0] | pos.occupied[1];
+    pos.whiteToMove = !pos.whiteToMove;
+}
+
+void undoMove(Position &pos, Move move, const Undo &undo) {
+    int from = fromMove(move), to = toMove(move), flags = flagsMove(move);
+    bool white = !pos.whiteToMove; 
+    int us = white ? 0 : 1, them = us ^ 1;
+
+    int piece = pieceAt(pos, to);
+
+    // Move Piece back
+    clearBit(pos.pieces[piece], to);
+    setBit(pos.pieces[piece], from);
+    clearBit(pos.occupied[us], to);
+    setBit(pos.occupied[us], from);
+
+    // Restore captured piece
+    if (undo.capturedPiece != NO_PIECE) {
+        setBit(pos.pieces[undo.capturedPiece], to);
+        setBit(pos.occupied[them], to);
+    }
+
+    // Undo en passant capture
+    if (flags == EP_CAPTURE) {
+        int capSquare = white ? to - 8 : to + 8;
+        int capPiece = white ? BP : WP;
+        setBit(pos.pieces[capPiece], capSquare);
+        setBit(pos.occupied[them], capSquare);
+    }
+
+    // Undo castling
+    if (flags == KING_CASTLE) {
+        int rookfrom = (white ? H1 : H8);
+        int rookto = (white ? F1 : F8);
+
+        int rookPiece = white ? WR : BR;
+        clearBit(pos.pieces[rookPiece], rookto);
+        setBit(pos.pieces[rookPiece], rookfrom);
+        clearBit(pos.occupied[us], rookto);
+        setBit(pos.occupied[us], rookfrom);
+    } else if (flags == QUEEN_CASTLE) {
+        int rookfrom = (white ? A1 : A8);
+        int rookto = (white ? D1 : D8);
+
+        int rookPiece = white ? WR : BR;
+        clearBit(pos.pieces[rookPiece], rookto);
+        setBit(pos.pieces[rookPiece], rookfrom);
+        clearBit(pos.occupied[us], rookto);
+        setBit(pos.occupied[us], rookfrom);
+    }
+
+    // Undo promotion
+    if (flags >= PROMO_N) {
+        int promoted = us * 6 + WN + (flags & 3);
+        clearBit(pos.pieces[promoted], from);
+        setBit(pos.pieces[white ? WP : BP], from);
+    }
+
+    // Restore castling rights, en passant square, and halfmove clock
+    pos.castlingRights = undo.castlingRights;
+    pos.epSquare = undo.epSquare;
+    pos.halfmoveClock = undo.halfmoveClock;
+    
+    // Update occupied squares and side to move
+    pos.occupied[2] = pos.occupied[0] | pos.occupied[1];
+    pos.whiteToMove = !pos.whiteToMove;
+}

@@ -237,6 +237,73 @@ void testCaptureFlags() {
     std::cout << "capture flags OK\n";
 }
 
+// เทียบทีละ field — ห้ามใช้ memcmp เพราะ Position มี padding หลัง bool ที่ไม่รับประกันค่า
+bool samePosition(const Position &a, const Position &b) {
+    for (int i = 0; i < 12; ++i) if (a.pieces[i]   != b.pieces[i])   return false;
+    for (int i = 0; i < 3;  ++i) if (a.occupied[i] != b.occupied[i]) return false;
+    return a.whiteToMove    == b.whiteToMove
+        && a.castlingRights == b.castlingRights
+        && a.epSquare       == b.epSquare
+        && a.halfmoveClock  == b.halfmoveClock;
+}
+
+void reportDiff(const Position &before, const Position &after, Move m) {
+    std::cerr << "    move from=" << fromMove(m) << " to=" << toMove(m)
+              << " flags=" << flagsMove(m) << "\n";
+    for (int i = 0; i < 12; ++i)
+        if (before.pieces[i] != after.pieces[i])
+            std::cerr << "      pieces[" << pieceToChar[i] << "] ต่างกัน\n";
+    for (int i = 0; i < 3; ++i)
+        if (before.occupied[i] != after.occupied[i])
+            std::cerr << "      occupied[" << i << "] ต่างกัน\n";
+    if (before.castlingRights != after.castlingRights)
+        std::cerr << "      castlingRights " << before.castlingRights
+                  << " -> " << after.castlingRights << "\n";
+    if (before.epSquare != after.epSquare)
+        std::cerr << "      epSquare " << before.epSquare << " -> " << after.epSquare << "\n";
+    if (before.halfmoveClock != after.halfmoveClock)
+        std::cerr << "      halfmoveClock " << before.halfmoveClock
+                  << " -> " << after.halfmoveClock << "\n";
+    if (before.whiteToMove != after.whiteToMove)
+        std::cerr << "      whiteToMove ไม่กลับ\n";
+}
+
+// doMove แล้ว undoMove ต้องได้กระดานเดิมเป๊ะ ทุกตา ไม่มีข้อยกเว้น
+void assertRoundTrip(const std::string &fen) {
+    Position pos;
+    parseFEN(pos, fen);
+    MoveList list;
+    genAllForTest(pos, list);
+
+    for (int i = 0; i < list.count; ++i) {
+        Position before = pos;
+        Undo undo{};
+        doMove(pos, list.moves[i], undo);
+        undoMove(pos, list.moves[i], undo);
+
+        if (!samePosition(before, pos)) {
+            std::cerr << "  round-trip FAIL: " << fen << std::endl;
+            reportDiff(before, pos, list.moves[i]);
+            assert(false && "doMove/undoMove round-trip");
+        }
+        pos = before;   // กันไม่ให้ตาที่พังลามไปตาถัดไป
+    }
+}
+
+void testMakeUnmake() {
+    assertRoundTrip("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    assertRoundTrip("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");      // เข้าป้อมได้ทุกทาง
+    assertRoundTrip("r3k2r/8/8/8/8/8/8/R3K2R b KQkq - 0 1");
+    assertRoundTrip("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1");         // en passant ขาว
+    assertRoundTrip("4k3/8/8/8/3Pp3/8/8/4K3 b - d3 0 1");         // en passant ดำ
+    assertRoundTrip("3q4/4P3/8/8/8/8/8/4K2k w - - 0 1");          // โปรโมท + โปรโมทพร้อมกิน
+    assertRoundTrip("4k2K/8/8/8/8/8/4p3/3Q4 b - - 0 1");          // ฝั่งดำโปรโมท
+    assertRoundTrip("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+    assertRoundTrip("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQkq - 0 1");
+
+    std::cout << "make/unmake round-trip OK\n";
+}
+
 void testIsSquareAttacked() {
     // เบี้ยดำที่ d5 โจมตี c4 กับ e4 (มันเดินลงล่าง)
     Position p; parseFEN(p, "8/8/8/3p4/8/8/8/8 w - - 0 1");
@@ -346,6 +413,7 @@ int main() {
     testIsSquareAttacked();
     testCastling();
     testCaptureFlags();
+    testMakeUnmake();
     std::cout << "all tests passed\n";
     return 0;
 }

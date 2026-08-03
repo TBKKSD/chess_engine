@@ -3,6 +3,7 @@
 #include <string>
 #include "attacks.h"
 #include <cassert>
+#include <array>
 
 struct Position {
     U64 pieces[12] = {0};
@@ -11,6 +12,13 @@ struct Position {
     int castlingRights = 0;
     int epSquare = -1;
     int halfmoveClock = 0;
+};
+
+struct Undo {
+    int capturedPiece;
+    int castlingRights;
+    int epSquare;
+    int halfmoveClock;
 };
 
 // bit utilities
@@ -46,3 +54,6 @@ void printBoard(const Position &pos);
 
 bool isSquareAttacked(const Position &pos, int sq, bool byWhite);
 bool inCheck(const Position &pos);
+
+void doMove(Position &pos, Move move, Undo &undo);
+void undoMove(Position &pos, Move move, const Undo &undo);
