@@ -2,6 +2,7 @@
 #include "type.h"
 #include <string>
 #include "attacks.h"
+#include <cassert>
 
 struct Position {
     U64 pieces[12] = {0};
@@ -23,10 +24,15 @@ inline bool getBit(const U64 &b, int square) {
     return (b >> square) & 1ULL;
 }
 
+inline int lsb(U64 b) {
+    assert(b != 0);
+    return __builtin_ctzll(b);
+}
+
 inline int popcount(U64 b) { return __builtin_popcountll(b); }
 
 inline int popLsb(U64 &b) {
-    int sq = __builtin_ctzll(b);
+    int sq = lsb(b);
     b &= b - 1;
     return sq;
 }

@@ -4,7 +4,7 @@
 
 int main() {
     Position pos;
-    std::string fen = "8/8/8/3R4/8/8/8/K6k w - - 0 1";
+    std::string fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
     parseFEN(pos, fen);
     printBoard(pos);
     return 0;

@@ -10,7 +10,8 @@ void genKnightMoves(Position &pos, MoveList &moves) {
 
         while (targets) {
             int to = popLsb(targets);
-            moves.add(makeMove(from, to));
+            bool isCapture = getBit(pos.occupied[1 - us], to);
+            moves.add(makeMove(from, to, isCapture ? CAPTURE : QUIET));
         }
     }
 }
@@ -25,7 +26,8 @@ void genKingMoves(Position &pos, MoveList &moves) {
 
         while (targets) {
             int to = popLsb(targets);
-            moves.add(makeMove(from, to));
+            bool isCapture = getBit(pos.occupied[1 - us], to);
+            moves.add(makeMove(from, to, isCapture ? CAPTURE : QUIET));
         }
     }
 }
@@ -101,8 +103,11 @@ void genSlidingMoves(const Position &pos, MoveList &list) {
         while (bb) {
             int from = popLsb(bb);
             U64 targets = entry.attackFn(from, blockers) & notOurs;
-            while (targets)
-                list.add(makeMove(from, popLsb(targets)));
+            while (targets) {
+                int to = popLsb(targets);
+                bool isCapture = getBit(pos.occupied[1 - us], to);
+                list.add(makeMove(from, to, isCapture ? CAPTURE : QUIET));
+            }
         }
     }
 }

@@ -38,10 +38,10 @@ void parseFEN(Position &pos, const std::string &fen) {
 
     // castling rights
     for (char c : castle) {
-        if (c == 'K') pos.castlingRights |= 1; // White kingside
-        if (c == 'Q') pos.castlingRights |= 2; // White queenside
-        if (c == 'k') pos.castlingRights |= 4; // Black kingside
-        if (c == 'q') pos.castlingRights |= 8; // Black queenside
+        if (c == 'K') pos.castlingRights |= WK_CASTLE;
+        if (c == 'Q') pos.castlingRights |= WQ_CASTLE;
+        if (c == 'k') pos.castlingRights |= BK_CASTLE;
+        if (c == 'q') pos.castlingRights |= BQ_CASTLE; 
     }
 
     // en passant square
@@ -108,6 +108,6 @@ bool isSquareAttacked(const Position &pos, int  sq, bool byWhite) {
 }
 
 bool inCheck(const Position &pos) {
-    int kingSquare = __builtin_ctzll(pos.pieces[pos.whiteToMove ? WK : BK]);
+    int kingSquare = lsb(pos.pieces[pos.whiteToMove ? WK : BK]);
     return isSquareAttacked(pos, kingSquare, !pos.whiteToMove);
 }

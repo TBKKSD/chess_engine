@@ -186,6 +186,57 @@ void testRookBishopQueenAttacks() {
     std::cout << "rook, bishop, queen attacks OK\n";
 }
 
+// รวม pseudo-legal ทุกชนิดไว้ที่เดียว (ชั่วคราวสำหรับเทส — ของจริงควรอยู่ใน movegen.cpp)
+void genAllForTest(Position &pos, MoveList &list) {
+    genPawnMoves(pos, list);
+    genKnightMoves(pos, list);
+    genKingMoves(pos, list);
+    genSlidingMoves(pos, list);
+    genCastling(pos, list);
+}
+
+// ตาที่ตั้งบิต CAPTURE ต้องเท่ากับตาที่กินหมากจริงเป๊ะ ไม่ขาดไม่เกิน
+// (ep นับเป็นการกิน ทั้งที่ช่องปลายทางว่าง — เป็นข้อยกเว้นเดียว)
+void assertCaptureFlagsMatch(const std::string &fen) {
+    Position pos;
+    parseFEN(pos, fen);
+    MoveList list;
+    genAllForTest(pos, list);
+
+    int flagged = 0, actual = 0;
+    for (int i = 0; i < list.count; ++i) {
+        Move m = list.moves[i];
+        if (flagsMove(m) & CAPTURE) flagged++;
+        if (flagsMove(m) == EP_CAPTURE || pieceAt(pos, toMove(m)) != NO_PIECE) actual++;
+    }
+    // cerr เพราะ abort() ของ assert ไม่ flush cout ให้
+    if (flagged != actual)
+        std::cerr << "  capture flag mismatch: " << fen
+                  << "\n    flagged=" << flagged << " actual=" << actual << std::endl;
+    assert(flagged == actual);
+}
+
+void testCaptureFlags() {
+    // หมากที่กระโดด — flag ต่อช่องปลายทาง
+    assertCaptureFlagsMatch("4k3/8/8/8/3N4/8/2p5/4K3 w - - 0 1");
+    assertCaptureFlagsMatch("4k3/8/8/8/8/8/3p4/3K4 w - - 0 1");
+
+    // หมากที่เลื่อน — ตัวเดียวมีทั้งตากินและตาเดินเปล่าปนกัน
+    assertCaptureFlagsMatch("4k3/3p4/8/8/3R4/8/8/4K3 w - - 0 1");
+    assertCaptureFlagsMatch("4k3/8/8/8/8/8/1p6/2B1K3 w - - 0 1");
+    assertCaptureFlagsMatch("4k3/3p4/8/8/3Q4/8/8/4K3 w - - 0 1");
+
+    // เบี้ย รวม en passant
+    assertCaptureFlagsMatch("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1");
+    assertCaptureFlagsMatch("4k3/4P3/8/8/8/8/8/4K3 w - - 0 1");
+
+    // ตำแหน่งจริงที่มีทุกอย่างปนกัน (Kiwipete)
+    assertCaptureFlagsMatch("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+    assertCaptureFlagsMatch("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQkq - 0 1");
+
+    std::cout << "capture flags OK\n";
+}
+
 void testIsSquareAttacked() {
     // เบี้ยดำที่ d5 โจมตี c4 กับ e4 (มันเดินลงล่าง)
     Position p; parseFEN(p, "8/8/8/3p4/8/8/8/8 w - - 0 1");
@@ -294,6 +345,7 @@ int main() {
     testRookBishopQueenAttacks();
     testIsSquareAttacked();
     testCastling();
+    testCaptureFlags();
     std::cout << "all tests passed\n";
     return 0;
 }
