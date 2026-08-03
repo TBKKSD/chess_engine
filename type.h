@@ -47,3 +47,10 @@ enum MoveFlag {
     PROMO_N = 8,  PROMO_B = 9,  PROMO_R = 10, PROMO_Q = 11,
     PROMO_N_CAP = 12, PROMO_B_CAP = 13, PROMO_R_CAP = 14, PROMO_Q_CAP = 15,
 };
+
+enum CastlingRights {
+    WK_CASTLE = 1,
+    WQ_CASTLE = 2,
+    BK_CASTLE = 4,
+    BQ_CASTLE = 8
+};

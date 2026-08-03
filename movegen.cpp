@@ -76,8 +76,7 @@ void genPawnMoves(Position &pos, MoveList &moves) {
         if (pos.epSquare != -1) {
             U64 epTargets = PAWN_ATTACKS[us][from] & (1ULL << pos.epSquare);
             if (epTargets) {
-                int to = popLsb(epTargets);
-                moves.add(makeMove(from, to));
+                moves.add(makeMove(from, pos.epSquare, EP_CAPTURE));
             }
         }
 
@@ -104,6 +103,44 @@ void genSlidingMoves(const Position &pos, MoveList &list) {
             U64 targets = entry.attackFn(from, blockers) & notOurs;
             while (targets)
                 list.add(makeMove(from, popLsb(targets)));
+        }
+    }
+}
+
+void genCastling(const Position &pos, MoveList &list) {
+    U64 occ = pos.occupied[2];
+
+    if(pos.whiteToMove) {
+        if(inCheck(pos)) return; // can't castle out of check
+
+        if((pos.castlingRights & WK_CASTLE)
+           && !(occ & ((1ULL << F1) | (1ULL << G1)))
+           && !isSquareAttacked(pos, F1, false) 
+           && !isSquareAttacked(pos, G1, false)) {
+            list.add(makeMove(E1, G1, KING_CASTLE));
+        }
+
+        if((pos.castlingRights & WQ_CASTLE)
+           && !(occ & ((1ULL << D1) | (1ULL << C1) | (1ULL << B1)))
+           && !isSquareAttacked(pos, D1, false) 
+           && !isSquareAttacked(pos, C1, false)) {
+            list.add(makeMove(E1, C1, QUEEN_CASTLE));
+        }
+    } else {
+        if(inCheck(pos)) return; // can't castle out of check
+
+        if((pos.castlingRights & BK_CASTLE)
+           && !(occ & ((1ULL << F8) | (1ULL << G8)))
+           && !isSquareAttacked(pos, F8, true) 
+           && !isSquareAttacked(pos, G8, true)) {
+            list.add(makeMove(E8, G8, KING_CASTLE));
+        }
+
+        if((pos.castlingRights & BQ_CASTLE)
+           && !(occ & ((1ULL << D8) | (1ULL << C8) | (1ULL << B8)))
+           && !isSquareAttacked(pos, D8, true) 
+           && !isSquareAttacked(pos, C8, true)) {
+            list.add(makeMove(E8, C8, QUEEN_CASTLE));
         }
     }
 }

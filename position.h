@@ -1,6 +1,7 @@
 #pragma once
 #include "type.h"
 #include <string>
+#include "attacks.h"
 
 struct Position {
     U64 pieces[12] = {0};
@@ -36,3 +37,6 @@ int charToPiece(char c);
 void parseFEN(Position &pos, const std::string &fen);
 int pieceAt(const Position &pos, int square);
 void printBoard(const Position &pos);
+
+bool isSquareAttacked(const Position &pos, int sq, bool byWhite);
+bool inCheck(const Position &pos);

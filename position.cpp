@@ -76,3 +76,38 @@ void printBoard(const Position &pos) {
               << " | ep: "       << pos.epSquare << "\n";
 }
 
+bool isSquareAttacked(const Position &pos, int  sq, bool byWhite) {
+    U64 occ = pos.occupied[2];
+
+    // Knight attacks
+    U64 knights = pos.pieces[byWhite ? WN : BN];
+    if (KNIGHT_ATTACKS[sq] & knights) return true;
+
+    // King attacks
+    U64 king = pos.pieces[byWhite ? WK : BK];
+    if (KING_ATTACKS[sq] & king) return true;
+
+    // Rook and Queen attacks
+    U64 rq = pos.pieces[byWhite ? WR : BR] | pos.pieces[byWhite ? WQ : BQ];
+    if (getRookAttacks(sq, occ) & rq) return true;
+
+    // Bishop and Queen attacks
+    U64 bq = pos.pieces[byWhite ? WB : BB] | pos.pieces[byWhite ? WQ : BQ];
+    if (getBishopAttacks(sq, occ) & bq) return true;
+
+    // Pawn attacks
+    U64 pawns = pos.pieces[byWhite ? WP : BP];
+    if (byWhite) {
+        if ((((1ULL << sq) & ~FILE_A) >> 9) & pawns) return true; // capture from left
+        if ((((1ULL << sq) & ~FILE_H) >> 7) & pawns) return true; // capture from right
+    } else {
+        if ((((1ULL << sq) & ~FILE_A) << 7) & pawns) return true; // capture from left
+        if ((((1ULL << sq) & ~FILE_H) << 9) & pawns) return true; // capture from right
+    }
+    return false;
+}
+
+bool inCheck(const Position &pos) {
+    int kingSquare = __builtin_ctzll(pos.pieces[pos.whiteToMove ? WK : BK]);
+    return isSquareAttacked(pos, kingSquare, !pos.whiteToMove);
+}
