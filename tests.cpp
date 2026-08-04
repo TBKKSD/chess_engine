@@ -5,6 +5,7 @@
 #include "movegen.h"
 #include "type.h"
 #include "position.h"
+#include "perft.h"
 
 void testAttackTables() {
     // 1. ผลรวมทั้งกระดาน — ตัวเลขนี้คงที่ พิสูจน์ได้
@@ -304,6 +305,57 @@ void testMakeUnmake() {
     std::cout << "make/unmake round-trip OK\n";
 }
 
+void assertPerft(const std::string &fen, int depth, U64 expect) {
+    Position pos;
+    parseFEN(pos, fen);
+    U64 got = perft(pos, depth);
+    if (got != expect)
+        std::cerr << "  perft ไม่ตรง: " << fen << "\n    depth=" << depth
+                  << " got=" << got << " want=" << expect << std::endl;
+    assert(got == expect);
+}
+
+// ค่าอ้างอิงจาก Chess Programming Wiki — ตัวเลขพวกนี้ยืนยันกันมาหลายสิบปีแล้ว
+// ถ้าตรงทุกตำแหน่ง แปลว่า movegen + doMove/undoMove + ตัวกรอง legal ถูกทั้งระบบ
+void testPerft() {
+    const std::string start = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    assertPerft(start, 1, 20);
+    assertPerft(start, 2, 400);
+    assertPerft(start, 3, 8902);
+    assertPerft(start, 4, 197281);
+
+    // Kiwipete — ออกแบบมาดักบั๊กเข้าป้อมกับ en passant โดยเฉพาะ
+    const std::string kiwi = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+    assertPerft(kiwi, 1, 48);
+    assertPerft(kiwi, 2, 2039);
+    assertPerft(kiwi, 3, 97862);
+
+    // เบี้ยผ่านและ pin ตามแนวนอน
+    const std::string pos3 = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1";
+    assertPerft(pos3, 1, 14);
+    assertPerft(pos3, 2, 191);
+    assertPerft(pos3, 3, 2812);
+    assertPerft(pos3, 4, 43238);
+
+    // โปรโมชั่นหนาแน่นทั้งสองฝั่ง (เบี้ยขาว a7, เบี้ยดำ b2)
+    const std::string pos4 = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1";
+    assertPerft(pos4, 1, 6);
+    assertPerft(pos4, 2, 264);
+    assertPerft(pos4, 3, 9467);
+
+    const std::string pos5 = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
+    assertPerft(pos5, 1, 44);
+    assertPerft(pos5, 2, 1486);
+    assertPerft(pos5, 3, 62379);
+
+    const std::string pos6 = "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10";
+    assertPerft(pos6, 1, 46);
+    assertPerft(pos6, 2, 2079);
+    assertPerft(pos6, 3, 89890);
+
+    std::cout << "perft OK\n";
+}
+
 void testIsSquareAttacked() {
     // เบี้ยดำที่ d5 โจมตี c4 กับ e4 (มันเดินลงล่าง)
     Position p; parseFEN(p, "8/8/8/3p4/8/8/8/8 w - - 0 1");
@@ -414,6 +466,7 @@ int main() {
     testCastling();
     testCaptureFlags();
     testMakeUnmake();
+    testPerft();
     std::cout << "all tests passed\n";
     return 0;
 }

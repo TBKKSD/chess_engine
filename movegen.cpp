@@ -149,3 +149,27 @@ void genCastling(const Position &pos, MoveList &list) {
         }
     }
 }
+
+void genAllMoves(Position &pos, MoveList &list) {
+    genPawnMoves(pos, list);
+    genKnightMoves(pos, list);
+    genSlidingMoves(pos, list);
+    genKingMoves(pos, list);
+    genCastling(pos, list);
+}
+
+void genLegalMoves(Position &pos, MoveList &list) {
+    MoveList allMoves;
+    genAllMoves(pos, allMoves);
+
+    for (int i = 0; i < allMoves.count; ++i) {
+        Undo undo;
+        bool white = pos.whiteToMove;
+        doMove(pos, allMoves.moves[i], undo);
+        int ksq = lsb(pos.pieces[white ? WK : BK]);
+        if (!isSquareAttacked(pos, ksq, !white)) {
+            list.add(allMoves.moves[i]);
+        }
+        undoMove(pos, allMoves.moves[i], undo);
+    }
+}
