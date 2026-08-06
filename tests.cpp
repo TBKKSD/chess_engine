@@ -6,6 +6,9 @@
 #include "type.h"
 #include "position.h"
 #include "perft.h"
+#include "eval.h"
+#include <sstream>
+#include <vector>
 
 void testAttackTables() {
     // 1. ผลรวมทั้งกระดาน — ตัวเลขนี้คงที่ พิสูจน์ได้
@@ -356,6 +359,130 @@ void testPerft() {
     std::cout << "perft OK\n";
 }
 
+// สลับสีหมากทุกตัว + พลิกกระดานบนล่าง + สลับฝ่ายที่เดิน
+// ตำแหน่งที่ได้ต้องมีคะแนนเท่าเดิมเป๊ะ เพราะ evaluate() มองจากฝ่ายที่ถึงตาเดิน
+std::string mirrorFEN(const std::string &fen) {
+    std::istringstream ss(fen);
+    std::string board, side, castle, ep;
+    ss >> board >> side >> castle >> ep;
+
+    std::vector<std::string> ranks;
+    std::string cur;
+    for (char c : board) {
+        if (c == '/') { ranks.push_back(cur); cur.clear(); }
+        else cur += c;
+    }
+    ranks.push_back(cur);
+
+    std::string flipped;
+    for (int i = (int)ranks.size() - 1; i >= 0; --i) {
+        for (char c : ranks[i])
+            flipped += std::isalpha((unsigned char)c)
+                     ? (std::islower((unsigned char)c) ? std::toupper(c) : std::tolower(c))
+                     : c;
+        if (i > 0) flipped += '/';
+    }
+
+    std::string newCastle;
+    for (char c : castle)
+        newCastle += std::isalpha((unsigned char)c)
+                   ? (std::islower((unsigned char)c) ? std::toupper(c) : std::tolower(c))
+                   : c;
+
+    std::string newEp = ep;
+    if (ep != "-" && ep.size() >= 2) newEp = std::string(1, ep[0]) + char('0' + (9 - (ep[1] - '0')));
+
+    return flipped + " " + (side == "w" ? "b" : "w") + " " + newCastle + " " + newEp + " 0 1";
+}
+
+int evalOf(const std::string &fen) {
+    Position pos;
+    parseFEN(pos, fen);
+    return evaluate(pos);
+}
+
+void assertMirrorEqual(const std::string &fen) {
+    std::string m = mirrorFEN(fen);
+    int a = evalOf(fen), b = evalOf(m);
+    if (a != b)
+        std::cerr << "  eval ไม่สมมาตร:\n    " << fen << " -> " << a
+                  << "\n    " << m << " -> " << b << std::endl;
+    assert(a == b);
+}
+
+void testEvalSymmetry() {
+    assertMirrorEqual("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    assertMirrorEqual("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+    assertMirrorEqual("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1");
+    assertMirrorEqual("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8");
+    assertMirrorEqual("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1");
+
+    // ตำแหน่งเริ่มเกมสมมาตรสมบูรณ์ ต้องได้ 0 พอดี
+    assert(evalOf("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") == 0);
+
+    std::cout << "eval symmetry OK\n";
+}
+
+void testEvalMaterial() {
+    // ขาวได้ควีนเปล่าๆ หนึ่งตัว — ต้องนำอยู่ในระดับเกือบหนึ่งควีน
+    int up = evalOf("4k3/8/8/8/8/8/8/3QK3 w - - 0 1");
+    assert(up > 700 && up < 1200);
+
+    // ตำแหน่งเดียวกันแต่ดำถึงตาเดิน — คะแนนต้องกลับเครื่องหมายพอดี
+    assert(evalOf("4k3/8/8/8/8/8/8/3QK3 b - - 0 1") == -up);
+
+    // เรือ > ม้า > เบี้ย
+    int rook   = evalOf("4k3/8/8/8/8/8/8/R3K3 w - - 0 1");
+    int knight = evalOf("4k3/8/8/8/8/8/8/N3K3 w - - 0 1");
+    int pawn   = evalOf("4k3/8/8/8/8/8/P7/4K3 w - - 0 1");
+    assert(rook > knight && knight > pawn && pawn > 0);
+
+    std::cout << "eval material OK\n";
+}
+
+void testEvalPieceSquare() {
+    // เบี้ยยิ่งใกล้โปรโมทยิ่งดี
+    int e2 = evalOf("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1");
+    int e5 = evalOf("4k3/8/8/4P3/8/8/8/4K3 w - - 0 1");
+    int e7 = evalOf("4k3/4P3/8/8/8/8/8/4K3 w - - 0 1");
+    assert(e7 > e5 && e5 > e2);
+
+    // ม้ากลางกระดานดีกว่ามุม
+    assert(evalOf("4k3/8/8/8/3N4/8/8/4K3 w - - 0 1") >
+           evalOf("4k3/8/8/8/8/8/8/N3K3 w - - 0 1"));
+
+    // บิชอปกลางกระดานดีกว่ามุม
+    assert(evalOf("4k3/8/8/8/3B4/8/8/4K3 w - - 0 1") >
+           evalOf("4k3/8/8/8/8/8/8/B3K3 w - - 0 1"));
+
+    // เรือบนแถว 7 คือช่องคลาสสิกของเรือ ต้องดีกว่าเรือบนแถว 3
+    assert(evalOf("4k3/R7/8/8/8/8/8/4K3 w - - 0 1") >
+           evalOf("4k3/8/8/8/8/R7/8/4K3 w - - 0 1"));
+
+    std::cout << "eval piece-square OK\n";
+}
+
+void testEvalPhase() {
+    // หัวใจของการผสม MG/EG: ช่องคิง "คู่เดิม" ต้องสลับความชอบเมื่อ phase เปลี่ยน
+    // ทุกคู่ด้านล่างต่างกันแค่ช่องคิงขาวเท่านั้น หมากอื่นเหมือนกันเป๊ะ
+
+    // กลางเกม (หมากครบ phase=24) — คิงหลังแนวเบี้ยดีกว่าคิงกลางกระดาน
+    int mgHome = evalOf("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1");
+    int mgOut  = evalOf("rnbqkbnr/pppppppp/8/8/3K4/8/PPPPPPPP/RNBQ1BNR w - - 0 1");
+    assert(mgHome > mgOut);
+
+    // ปลายเกม (เหลือแต่คิง phase=0) — ช่องคู่เดิมกลับด้าน คิงกลางกระดานดีกว่า
+    int egHome = evalOf("4k3/8/8/8/8/8/8/4K3 w - - 0 1");
+    int egOut  = evalOf("4k3/8/8/8/3K4/8/8/8 w - - 0 1");
+    assert(egOut > egHome);
+
+    // ปลายเกม คิงกลางกระดานดีกว่าคิงซุกมุมด้วย
+    assert(evalOf("4k3/8/8/3K4/8/8/8/7P w - - 0 1") >
+           evalOf("4k3/8/8/8/8/8/8/K6P w - - 0 1"));
+
+    std::cout << "eval phase OK\n";
+}
+
 void testIsSquareAttacked() {
     // เบี้ยดำที่ d5 โจมตี c4 กับ e4 (มันเดินลงล่าง)
     Position p; parseFEN(p, "8/8/8/3p4/8/8/8/8 w - - 0 1");
@@ -467,6 +594,10 @@ int main() {
     testCaptureFlags();
     testMakeUnmake();
     testPerft();
+    testEvalSymmetry();
+    testEvalMaterial();
+    testEvalPieceSquare();
+    testEvalPhase();
     std::cout << "all tests passed\n";
     return 0;
 }
