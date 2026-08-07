@@ -7,6 +7,7 @@
 #include "position.h"
 #include "perft.h"
 #include "eval.h"
+#include "search.h"
 #include <sstream>
 #include <vector>
 
@@ -483,6 +484,106 @@ void testEvalPhase() {
     std::cout << "eval phase OK\n";
 }
 
+// negamax เปล่าๆ ไม่มีการตัดกิ่งเลย ใช้เป็นคำตอบอ้างอิง
+// ใบสุดท้ายเรียก quiescence เหมือน search() จะได้เทียบกันได้ตรงๆ
+int plainNegamax(Position &pos, int depth, int ply) {
+    if (depth == 0) return quiescence(pos, -INF, INF);
+
+    MoveList list;
+    genLegalMoves(pos, list);
+    if (list.count == 0) return inCheck(pos) ? -MATE_SCORE + ply : 0;
+
+    int best = -INF;
+    for (int i = 0; i < list.count; ++i) {
+        Undo undo;
+        doMove(pos, list.moves[i], undo);
+        int score = -plainNegamax(pos, depth - 1, ply + 1);
+        undoMove(pos, list.moves[i], undo);
+        if (score > best) best = score;
+    }
+    return best;
+}
+
+// alpha-beta เป็นแค่การตัดกิ่งที่พิสูจน์แล้วว่าไม่กระทบคำตอบ
+// ดังนั้นคะแนนต้องเท่ากับ negamax เปล่าเป๊ะ ถ้าไม่เท่าแปลว่าตัดผิด
+void assertSameAsPlain(const std::string &fen, int depth) {
+    Position a, b;
+    parseFEN(a, fen);
+    parseFEN(b, fen);
+
+    int pruned = search(a, depth, -INF, INF, 0);
+    int plain  = plainNegamax(b, depth, 0);
+
+    if (pruned != plain)
+        std::cerr << "  alpha-beta ไม่ตรงกับ negamax: " << fen
+                  << "\n    depth=" << depth << " alphabeta=" << pruned
+                  << " plain=" << plain << std::endl;
+    assert(pruned == plain);
+}
+
+void testSearchMatchesPlainNegamax() {
+    const std::string start = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    assertSameAsPlain(start, 1);
+    assertSameAsPlain(start, 2);
+    assertSameAsPlain(start, 3);
+
+    assertSameAsPlain("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", 2);
+    assertSameAsPlain("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", 3);
+    assertSameAsPlain("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", 2);
+    assertSameAsPlain("4k3/8/8/3q4/8/8/8/3RK3 w - - 0 1", 3);
+
+    std::cout << "search == plain negamax OK\n";
+}
+
+std::string bestMoveOf(const std::string &fen, int depth) {
+    Position pos;
+    parseFEN(pos, fen);
+    return moveToString(searchPosition(pos, depth));
+}
+
+int scoreOf(const std::string &fen, int depth) {
+    Position pos;
+    parseFEN(pos, fen);
+    return search(pos, depth, -INF, INF, 0);
+}
+
+void testSearchMate() {
+    // จนแถวหลัง: Ra1-a8# คิงดำติดเบี้ยตัวเอง หนีไม่ได้
+    const std::string mateIn1 = "6k1/5ppp/8/8/8/8/8/R3K3 w - - 0 1";
+    assert(bestMoveOf(mateIn1, 2) == "a1a8");
+
+    // จนที่ ply 1 → คะแนนต้องเป็น MATE_SCORE - 1 พอดี
+    assert(scoreOf(mateIn1, 2) == MATE_SCORE - 1);
+
+    // ค้นลึกขึ้นต้องยังได้เลขเดิม ไม่ใช่ไปเจอทางจนที่ช้ากว่าแล้วพอใจ
+    // ถ้าลืมลบ ply ออก ทางจนทุกทางจะมีค่าเท่ากันหมด
+    assert(scoreOf(mateIn1, 4) == MATE_SCORE - 1);
+
+    // ฝั่งโดนจน: ดำถึงตาเดินแต่โดนจนแล้ว
+    assert(scoreOf("R5k1/5ppp/8/8/8/8/8/4K3 b - - 0 1", 3) == -MATE_SCORE);
+
+    std::cout << "search mate OK\n";
+}
+
+void testSearchStalemate() {
+    // อับ: คิงดำ h8 ไปไหนไม่ได้เลยแต่ไม่ได้โดนรุก → ต้องได้ 0 ไม่ใช่ติดลบมหาศาล
+    assert(scoreOf("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1", 1) == 0);
+    assert(scoreOf("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1", 3) == 0);
+
+    std::cout << "search stalemate OK\n";
+}
+
+void testSearchTactics() {
+    // ควีนดำแขวนอยู่ที่ d5 ไม่มีใครป้องกัน → ต้องกิน
+    assert(bestMoveOf("4k3/8/8/3q4/8/8/8/3RK3 w - - 0 1", 2) == "d1d5");
+
+    // horizon effect: เบี้ย d5 มีเรือ d7 คุ้มกันอยู่
+    // Qxd5 ได้เบี้ย 100 แล้วโดน Rxd5 กินควีนคืน 900 — quiescence ต้องมองเห็น
+    assert(bestMoveOf("4k3/3r4/8/3p4/8/8/3Q4/4K3 w - - 0 1", 1) != "d2d5");
+
+    std::cout << "search tactics OK\n";
+}
+
 void testIsSquareAttacked() {
     // เบี้ยดำที่ d5 โจมตี c4 กับ e4 (มันเดินลงล่าง)
     Position p; parseFEN(p, "8/8/8/3p4/8/8/8/8 w - - 0 1");
@@ -598,6 +699,10 @@ int main() {
     testEvalMaterial();
     testEvalPieceSquare();
     testEvalPhase();
+    testSearchMatchesPlainNegamax();
+    testSearchMate();
+    testSearchStalemate();
+    testSearchTactics();
     std::cout << "all tests passed\n";
     return 0;
 }
