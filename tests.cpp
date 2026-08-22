@@ -8,8 +8,10 @@
 #include "perft.h"
 #include "eval.h"
 #include "search.h"
+#include "uci.h"
 #include <sstream>
 #include <vector>
+#include <chrono>
 
 void testAttackTables() {
     // 1. ผลรวมทั้งกระดาน — ตัวเลขนี้คงที่ พิสูจน์ได้
@@ -584,6 +586,142 @@ void testSearchTactics() {
     std::cout << "search tactics OK\n";
 }
 
+// ทุกตา legal ต้องแปลงเป็นสตริงแล้วแปลงกลับได้ Move ตัวเดิมเป๊ะ รวม flag
+// ถ้าสองตาต่างกันให้สตริงซ้ำกัน เทสนี้จะจับได้ทันทีเพราะ stringToMove คืนตัวแรกที่เจอ
+void assertMoveStringRoundTrip(const std::string &fen) {
+    Position pos;
+    parseFEN(pos, fen);
+    MoveList list;
+    genLegalMoves(pos, list);
+
+    for (int i = 0; i < list.count; ++i) {
+        Move m = list.moves[i];
+        std::string s = moveToString(m);
+        Move back = stringToMove(pos, s);
+        if (back != m)
+            std::cerr << "  แปลงกลับไม่ตรง: " << fen << "\n    \"" << s
+                      << "\" from=" << fromMove(m) << " to=" << toMove(m)
+                      << " flags=" << flagsMove(m)
+                      << " -> flags=" << flagsMove(back) << std::endl;
+        assert(back == m);
+    }
+}
+
+void testUciMoveStrings() {
+    assertMoveStringRoundTrip("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    assertMoveStringRoundTrip("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+    assertMoveStringRoundTrip("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R b KQkq - 0 1");
+    assertMoveStringRoundTrip("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1");          // en passant
+    assertMoveStringRoundTrip("3q4/4P3/8/8/8/8/8/4K2k w - - 0 1");           // โปรโมท 8 แบบ
+    assertMoveStringRoundTrip("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");       // เข้าป้อมทุกทาง
+    assertMoveStringRoundTrip("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1");
+
+    // ตาที่ไม่มีอยู่จริงต้องได้ 0 ไม่ใช่ตามั่วๆ
+    Position pos;
+    parseFEN(pos, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    assert(stringToMove(pos, "e2e5") == 0);   // เบี้ยเดิน 3 ช่องไม่ได้
+    assert(stringToMove(pos, "xyzw") == 0);   // สตริงมั่ว
+
+    std::cout << "uci move strings OK\n";
+}
+
+void testUciPosition() {
+    // "position startpos moves ..." ต้องได้กระดานเดียวกับการ doMove เองทีละตา
+    Position viaUci;
+    parseFEN(viaUci, START_FEN);
+    std::istringstream ss("startpos moves e2e4 e7e5 g1f3 b8c6 f1b5");
+    handlePosition(viaUci, ss);
+
+    Position direct;
+    parseFEN(direct, START_FEN);
+    const char *mv[] = {"e2e4", "e7e5", "g1f3", "b8c6", "f1b5"};
+    for (const char *s : mv) {
+        Undo undo;
+        Move m = stringToMove(direct, s);
+        assert(m != 0);
+        doMove(direct, m, undo);
+    }
+    assert(samePosition(viaUci, direct));
+
+    // "position fen <6 ช่อง> moves ..." — FEN มีช่องว่างข้างในจึงต้องแยกให้ถูกก่อนถึงคำว่า moves
+    const std::string kiwi =
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+    Position fenUci;
+    std::istringstream ss2("fen " + kiwi + " moves e1g1");
+    handlePosition(fenUci, ss2);
+
+    Position fenDirect;
+    parseFEN(fenDirect, kiwi);
+    Undo undo;
+    doMove(fenDirect, stringToMove(fenDirect, "e1g1"), undo);
+    assert(samePosition(fenUci, fenDirect));
+
+    // fen เปล่าๆ ไม่มี moves ต่อท้าย
+    Position fenOnly;
+    std::istringstream ss3("fen " + kiwi);
+    handlePosition(fenOnly, ss3);
+    Position plain;
+    parseFEN(plain, kiwi);
+    assert(samePosition(fenOnly, plain));
+
+    std::cout << "uci position OK\n";
+}
+
+bool isLegalMove(Position &pos, Move m) {
+    MoveList list;
+    genLegalMoves(pos, list);
+    for (int i = 0; i < list.count; ++i)
+        if (list.moves[i] == m) return true;
+    return false;
+}
+
+void testSearchTimeLimit() {
+    using Clock = std::chrono::steady_clock;
+    const std::string kiwi =
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+
+    // ตั้ง maxDepth ไว้สูงมากแต่ให้เวลาน้อย — ต้องหยุดเองแล้วคืนตาที่ legal
+    // ไม่ใช่ Move เปล่า (ซึ่ง UCI จะพิมพ์ออกไปเป็น "a1a1")
+    {
+        Position pos;
+        parseFEN(pos, kiwi);
+        auto t0 = Clock::now();
+        Move m = searchPosition(pos, 64, 200);
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                      Clock::now() - t0).count();
+
+        assert(m != 0);
+        assert(isLegalMove(pos, m));
+        // เผื่อเวลาไว้เยอะ ประเด็นคือมันต้องหยุด ไม่ใช่ไต่ไปจนถึง depth 64
+        if (ms >= 5000)
+            std::cerr << "  ค้นนานเกินไป: " << ms << " ms (จำกัดไว้ 200)" << std::endl;
+        assert(ms < 5000);
+    }
+
+    // เรียกซ้ำหลังหมดเวลาหลายรอบ ต้องยังทำงานได้ทุกครั้ง
+    // ถ้า stopSearch ไม่ถูกรีเซ็ต รอบที่ 2 เป็นต้นไปจะคืน 0 ทันที
+    for (int i = 0; i < 3; ++i) {
+        Position pos;
+        parseFEN(pos, kiwi);
+        Move m = searchPosition(pos, 64, 60);
+        assert(m != 0);
+        assert(isLegalMove(pos, m));
+    }
+
+    // หลังจากหมดเวลามาแล้ว การค้นแบบไม่จำกัดเวลาต้องยังหาตาที่ถูกต้องได้
+    // ตัวนี้คือ regression check ของ stopSearch ที่ค้างข้ามการเรียก
+    assert(bestMoveOf("4k3/8/8/3q4/8/8/8/3RK3 w - - 0 1", 3) == "d1d5");
+    assert(bestMoveOf("6k1/5ppp/8/8/8/8/8/R3K3 w - - 0 1", 2) == "a1a8");
+
+    // timeLimitMs = 0 แปลว่าไม่จำกัด ผลต้องเหมือนเดิมทุกครั้งที่เรียก
+    Position a, b;
+    parseFEN(a, kiwi);
+    parseFEN(b, kiwi);
+    assert(searchPosition(a, 3, 0) == searchPosition(b, 3, 0));
+
+    std::cout << "search time limit OK\n";
+}
+
 void testIsSquareAttacked() {
     // เบี้ยดำที่ d5 โจมตี c4 กับ e4 (มันเดินลงล่าง)
     Position p; parseFEN(p, "8/8/8/3p4/8/8/8/8 w - - 0 1");
@@ -703,6 +841,9 @@ int main() {
     testSearchMate();
     testSearchStalemate();
     testSearchTactics();
+    testSearchTimeLimit();
+    testUciMoveStrings();
+    testUciPosition();
     std::cout << "all tests passed\n";
     return 0;
 }

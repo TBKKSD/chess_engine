@@ -1,6 +1,23 @@
 #include "search.h"
+#include <chrono>
+using Clock = std::chrono::steady_clock;
+
+static Clock::time_point searchStart;
+static int      searchTimeLimit; // ms
+static bool     stopSearch;
+static uint64_t nodeCount;
+
+static inline bool timeUp() {
+    if (searchTimeLimit <= 0) return false;
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                  Clock::now() - searchStart).count();
+    return ms >= searchTimeLimit;
+}
 
 int search(Position &pos, int  depth, int alpha, int beta, int ply) {
+    if (stopSearch) return 0;
+    if ((++nodeCount & 2047) == 0 && timeUp()) { stopSearch = true; return 0; }
+
     if (depth == 0) return quiescence(pos, alpha, beta);
 
     MoveList list;
@@ -23,6 +40,7 @@ int search(Position &pos, int  depth, int alpha, int beta, int ply) {
 }
 
 int quiescence(Position &pos, int alpha, int beta) {
+    if (stopSearch) return 0;
     int standPat = evaluate(pos);        // "ถ้าไม่ทำอะไรเลยได้เท่านี้"
     if (standPat >= beta) return beta;
     if (standPat > alpha) alpha = standPat;
@@ -69,9 +87,15 @@ void orderMoves(const Position &pos, MoveList &list) {
     }
 }
 
-Move searchPosition(Position &pos, int maxDepth) {
+Move searchPosition(Position &pos, int maxDepth, int timeLimitMs) {
+    searchStart = Clock::now() ;
+    stopSearch = false ;
+    nodeCount = 0 ;
+    searchTimeLimit = timeLimitMs;
+
     Move bestMove = 0;
     for (int depth = 1; depth <= maxDepth; ++depth) {
+        int iterBest = 0;
         int alpha = -INF, beta = INF;
         MoveList list;
         genLegalMoves(pos, list);
@@ -82,8 +106,10 @@ Move searchPosition(Position &pos, int maxDepth) {
             doMove(pos, list.moves[i], undo);
             int score = -search(pos, depth - 1, -beta, -alpha, 1);
             undoMove(pos, list.moves[i],undo);
-            if (score > alpha) { alpha = score; bestMove = list.moves[i]; }
+            if (score > alpha) { alpha = score; iterBest = list.moves[i]; }
         }
+        if (stopSearch) break;
+        bestMove = iterBest;
     }
     return bestMove;
 }

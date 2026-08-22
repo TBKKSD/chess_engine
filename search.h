@@ -20,4 +20,4 @@ constexpr int MVV_LVA[6][6] = {
 int  search(Position &pos, int depth, int alpha, int beta, int ply);
 int  quiescence(Position &pos, int alpha, int beta);
 void orderMoves(const Position &pos, MoveList &list);
-Move searchPosition(Position &pos, int maxDepth);
+Move searchPosition(Position &pos, int maxDepth, int timeLimitMs = 0);
