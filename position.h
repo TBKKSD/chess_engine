@@ -57,3 +57,11 @@ bool inCheck(const Position &pos);
 
 void doMove(Position &pos, Move move, Undo &undo);
 void undoMove(Position &pos, Move move, const Undo &undo);
+
+extern U64 pieceKeys[12][64];
+extern bool sideKey;
+extern uint16_t castleKeys[16];
+extern uint8_t epKeys[8];
+
+void initZobrist();
+U64 computeKey(const Position &pos);

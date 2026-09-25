@@ -822,6 +822,7 @@ void testCastling() {
 }
 
 int main() {
+    initZobrist();
     initAttacksTables();
     testAttackTables();
     testMoveGen();

@@ -40,7 +40,7 @@ void uciLoop() {
             break;
         }
         else {
-            std::cout << "unknown command :" << token << "\n" ;
+            std::cerr << "unknown command :" << token << "\n" ;
         }
     }
 }
@@ -94,7 +94,8 @@ void handleGo(Position &pos, std::istringstream &ss) {
     if (timeLimit == 0) timeLimit = 5000;
 
     Move best = searchPosition(pos, depth, timeLimit);
-     std::cout << "bestmove " << moveToString(best) << std::endl;
+    if (best == 0) std::cout << "bestmove (none)" << std::endl;
+    else std::cout << "bestmove " << moveToString(best) << std::endl;
      
 }
 
