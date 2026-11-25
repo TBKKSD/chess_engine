@@ -821,6 +821,84 @@ void testCastling() {
     std::cout << "castling OK\n";
 }
 
+// เดินทุกตาลึก depth ชั้น: key ที่อัปเดตแบบ XOR ใน doMove ต้องเท่ากับคำนวณใหม่ทั้งกระดานเสมอ
+// และ undoMove ต้องคืน key เดิมเป๊ะ ถ้าลืม XOR ตรงไหน (เรือตอนเข้าป้อม, เบี้ยตอนโปรโมท ...) จะโดนจับที่นี่
+void assertKeyConsistent(Position &pos, int depth) {
+    if (depth == 0) return;
+    MoveList list;
+    genLegalMoves(pos, list);
+    for (int i = 0; i < list.count; ++i) {
+        Move m = list.moves[i];
+        U64 before = pos.key;
+        Undo undo;
+        doMove(pos, m, undo);
+        if (pos.key != computeKey(pos))
+            std::cerr << "  zobrist ไม่ตรงหลัง " << moveToString(m)
+                      << " flags=" << flagsMove(m) << std::endl;
+        assert(pos.key == computeKey(pos));
+        assertKeyConsistent(pos, depth - 1);
+        undoMove(pos, m, undo);
+        assert(pos.key == before);
+    }
+}
+
+U64 keyAfter(const std::string &fen, const std::vector<std::string> &moves) {
+    Position pos;
+    parseFEN(pos, fen);
+    for (const std::string &s : moves) {
+        Move m = stringToMove(pos, s);
+        assert(m != 0);
+        Undo undo;
+        doMove(pos, m, undo);
+    }
+    return pos.key;
+}
+
+U64 keyOf(const std::string &fen) {
+    Position pos;
+    parseFEN(pos, fen);
+    return pos.key;
+}
+
+void testZobrist() {
+    // incremental == from scratch — ชุดเดียวกับ perft เพราะครอบคลุมตาพิเศษครบ
+    const char *fens[] = {
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+        "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+        "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
+        "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1",
+        "3q4/4P3/8/8/8/8/8/4K2k w - - 0 1",
+    };
+    for (const char *fen : fens) {
+        Position pos;
+        parseFEN(pos, fen);
+        assertKeyConsistent(pos, 3);
+    }
+
+    // ลำดับตาต่างกัน แต่จบที่ตำแหน่งเดียวกัน → key ต้องเท่ากัน (นี่คือสิ่งที่ TT จะใช้)
+    assert(keyAfter(START_FEN, {"g1f3", "b8c6", "b1c3"}) ==
+           keyAfter(START_FEN, {"b1c3", "b8c6", "g1f3"}));
+
+    // ม้าออกแล้วกลับ = ตำแหน่งเริ่มต้นซ้ำ (ใช้ตรวจ repetition)
+    assert(keyAfter(START_FEN, {"g1f3", "g8f6", "f3g1", "f6g8"}) == keyOf(START_FEN));
+
+    // หมากวางเหมือนกันทุกตัว แต่สถานะอื่นต่าง → key ต้องต่าง
+    const std::string board = "r3k2r/8/8/8/8/8/8/R3K2R";
+    assert(keyOf(board + " w KQkq - 0 1") != keyOf(board + " b KQkq - 0 1"));  // ฝ่ายที่เดิน
+    assert(keyOf(board + " w KQkq - 0 1") != keyOf(board + " w Kkq - 0 1"));   // สิทธิ์เข้าป้อม
+    assert(keyOf("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1") !=
+           keyOf("4k3/8/8/3pP3/8/8/8/4K3 w - - 0 1"));                         // ช่อง en passant
+
+    // e4 แล้ว e5: ช่อง ep ต้องถูก XOR ออกตอนตาถัดไป ไม่งั้นจะต่างจาก FEN ตรงๆ
+    assert(keyAfter(START_FEN, {"e2e4", "e7e5"}) ==
+           keyOf("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2"));
+
+    std::cout << "zobrist OK\n";
+}
+
+
 int main() {
     initZobrist();
     initAttacksTables();
@@ -834,6 +912,7 @@ int main() {
     testCaptureFlags();
     testMakeUnmake();
     testPerft();
+    testZobrist();
     testEvalSymmetry();
     testEvalMaterial();
     testEvalPieceSquare();

@@ -4,6 +4,25 @@
 #include <sstream>
 #include <cctype>
 
+#include <random>
+
+U64 pieceKeys[12][64];
+U64 sideKey;
+U64 castleKeys[16];
+U64 epKeys[8];
+
+void initZobrist() {
+    std::mt19937_64 rng(1070372);
+    for (int p=0;p<12;p++){
+        for(int sq=0;sq<64;sq++){
+            pieceKeys[p][sq] = rng();
+        }
+    }
+    sideKey = rng();
+    for (int i=0;i<16;++i) castleKeys[i] = rng();
+    for (int f=0;f<8;++f) epKeys[f] = rng();
+}
+
 const std::string pieceToChar = "PNBRQKpnbrqk";
 
 int charToPiece(char c){
@@ -52,6 +71,9 @@ void parseFEN(Position &pos, const std::string &fen) {
     for (int p = WP; p <= WK; ++p) pos.occupied[0] |= pos.pieces[p];
     for (int p = BP; p <= BK; ++p) pos.occupied[1] |= pos.pieces[p];
     pos.occupied[2] = pos.occupied[0] | pos.occupied[1];
+
+    // compute Zobrist key
+    pos.key = computeKey(pos);
 }
 
 int pieceAt(const Position &pos, int square) {
@@ -122,9 +144,11 @@ static constexpr auto castlingMask = [] {
 
 
 void doMove(Position &pos, Move move, Undo &undo) {
+    undo.key = pos.key; // Save the current key in the undo structure
     int from = fromMove(move), to = toMove(move), flags = flagsMove(move);
     bool white = pos.whiteToMove;
     int us = white ? 0 : 1, them = us ^ 1;
+    pos.key ^= sideKey; // Update key for side to move
 
     int piece = pieceAt(pos, from);
     int capturedPiece = pieceAt(pos, to);
@@ -134,11 +158,14 @@ void doMove(Position &pos, Move move, Undo &undo) {
     if (capturedPiece != NO_PIECE) {
         clearBit(pos.pieces[capturedPiece], to);
         clearBit(pos.occupied[them], to);
+        pos.key ^= pieceKeys[capturedPiece][to]; // Update key for captured piece
     }
 
     // Move Piece
     clearBit(pos.pieces[piece], from);
+    pos.key ^= pieceKeys[piece][from]; // Update key for moved piece
     setBit(pos.pieces[piece], to);
+    pos.key ^= pieceKeys[piece][to]; // Update key for moved piece
     clearBit(pos.occupied[us], from);
     setBit(pos.occupied[us], to);
     undo.castlingRights = pos.castlingRights;
@@ -150,6 +177,7 @@ void doMove(Position &pos, Move move, Undo &undo) {
         int capPiece = white ? BP : WP;
         clearBit(pos.pieces[capPiece], capSquare);
         clearBit(pos.occupied[them], capSquare);
+        pos.key ^= pieceKeys[capPiece][capSquare];
         undo.epSquare = pos.epSquare; 
     }
 
@@ -161,7 +189,9 @@ void doMove(Position &pos, Move move, Undo &undo) {
 
         int rookPiece = white ? WR : BR;
         clearBit(pos.pieces[rookPiece], rookfrom);
+        pos.key ^= pieceKeys[rookPiece][rookfrom]; // Update key for rook move
         setBit(pos.pieces[rookPiece], rookto);
+        pos.key ^= pieceKeys[rookPiece][rookto]; // Update key for rook move
         clearBit(pos.occupied[us], rookfrom);
         setBit(pos.occupied[us], rookto);
     }
@@ -172,7 +202,9 @@ void doMove(Position &pos, Move move, Undo &undo) {
 
         int rookPiece = white ? WR : BR;
         clearBit(pos.pieces[rookPiece], rookfrom);
+        pos.key ^= pieceKeys[rookPiece][rookfrom]; // Update key for rook move
         setBit(pos.pieces[rookPiece], rookto);
+        pos.key ^= pieceKeys[rookPiece][rookto]; // Update key for rook move
         clearBit(pos.occupied[us], rookfrom);
         setBit(pos.occupied[us], rookto);
     }
@@ -182,14 +214,20 @@ void doMove(Position &pos, Move move, Undo &undo) {
         int promoted = us * 6 + WN + (flags & 3);
         clearBit(pos.pieces[piece], to); // Remove pawn
         setBit(pos.pieces[promoted], to); // Add promoted piece
+        pos.key ^= pieceKeys[piece][to]; // Update key for pawn removal
+        pos.key ^= pieceKeys[promoted][to]; // Update key for promoted piece
     }
 
     //Update castling rights
+    pos.key ^= castleKeys[pos.castlingRights]; // Remove old castling rights from key
     pos.castlingRights &= castlingMask[from];
     pos.castlingRights &= castlingMask[to];
+    pos.key ^= castleKeys[pos.castlingRights]; // Add new castling rights to key
 
     // Update en passant square
+    if (pos.epSquare != -1) pos.key ^= epKeys[pos.epSquare % 8]; // Remove old ep square from key
     pos.epSquare = (flags == DOUBLE_PUSH) ? (white ? to - 8 : to + 8) : -1;
+    if (pos.epSquare != -1) pos.key ^= epKeys[pos.epSquare % 8]; // Add new ep square to key
 
     // Update halfmove clock
     undo.halfmoveClock = pos.halfmoveClock;
@@ -202,6 +240,7 @@ void doMove(Position &pos, Move move, Undo &undo) {
 }
 
 void undoMove(Position &pos, Move move, const Undo &undo) {
+    pos.key = undo.key; // Restore the Zobrist key from the undo structure
     int from = fromMove(move), to = toMove(move), flags = flagsMove(move);
     bool white = !pos.whiteToMove; 
     int us = white ? 0 : 1, them = us ^ 1;
@@ -264,4 +303,21 @@ void undoMove(Position &pos, Move move, const Undo &undo) {
     // Update occupied squares and side to move
     pos.occupied[2] = pos.occupied[0] | pos.occupied[1];
     pos.whiteToMove = !pos.whiteToMove;
+}
+
+U64 computeKey(const Position &pos) {
+    U64 key = 0;
+    for (int p=0; p<12; p++){
+        U64 pieces = pos.pieces[p];
+        while (pieces) {
+            int sq = popLsb(pieces);
+            key ^= pieceKeys[p][sq];
+        }
+    }
+
+    if (!pos.whiteToMove) key ^= sideKey;
+    key ^= castleKeys[pos.castlingRights];
+    if (pos.epSquare != -1) key ^= epKeys[pos.epSquare % 8];
+
+    return key;
 }

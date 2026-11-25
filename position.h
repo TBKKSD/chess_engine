@@ -12,6 +12,7 @@ struct Position {
     int castlingRights = 0;
     int epSquare = -1;
     int halfmoveClock = 0;
+    U64 key = 0;
 };
 
 struct Undo {
@@ -19,6 +20,7 @@ struct Undo {
     int castlingRights;
     int epSquare;
     int halfmoveClock;
+    U64 key;
 };
 
 // bit utilities
@@ -59,9 +61,9 @@ void doMove(Position &pos, Move move, Undo &undo);
 void undoMove(Position &pos, Move move, const Undo &undo);
 
 extern U64 pieceKeys[12][64];
-extern bool sideKey;
-extern uint16_t castleKeys[16];
-extern uint8_t epKeys[8];
+extern U64 sideKey;
+extern U64 castleKeys[16];
+extern U64 epKeys[8];
 
 void initZobrist();
 U64 computeKey(const Position &pos);
