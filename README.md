@@ -10,7 +10,8 @@ A small UCI chess engine written from scratch in C++17, built step by step: bitb
 - **Evaluation:** material plus piece-square tables, tapered between middlegame and endgame by game phase
 - **Search:** iterative deepening negamax with alpha-beta, quiescence search on captures, MVV-LVA move ordering, time limit
 - **Protocol:** UCI (`uci`, `isready`, `ucinewgame`, `position`, `go`, `quit`)
-- **In progress:** Zobrist hashing (`initZobrist`, `computeKey`) as groundwork for a transposition table
+- **Hashing:** 64-bit Zobrist key on every position (`pos.key`), updated incrementally with XOR in `doMove` and restored from `Undo` in `undoMove`
+- **Transposition table:** 64MB by default, indexed by `key & (size - 1)`, always-replace. It stores exact/lower/upper bounds with mate scores adjusted by ply, and the stored best move is searched first. The table is cleared on `ucinewgame`
 
 ## Building
 
@@ -25,12 +26,12 @@ Or compile by hand:
 
 ```sh
 g++ -O2 -std=c++17 -Wall -Wextra -flto -DNDEBUG -o engine.exe \
-    main.cpp position.cpp attacks.cpp movegen.cpp perft.cpp eval.cpp search.cpp uci.cpp
+    main.cpp position.cpp attacks.cpp movegen.cpp perft.cpp eval.cpp search.cpp uci.cpp tt.cpp
 ```
 
 Compile the release build with `-DNDEBUG` on every file at once. `lsb()` is an inline function in a header and contains an `assert`, so mixing files built with and without it breaks the one-definition rule.
 
-> The `Makefile` is out of date. It doesn't list `perft.cpp`, `eval.cpp`, `search.cpp` or `uci.cpp`, so use the scripts above.
+> The `Makefile` is out of date. It doesn't list `perft.cpp`, `eval.cpp`, `search.cpp`, `uci.cpp` or `tt.cpp`, so use the scripts above.
 
 ## Usage
 
@@ -75,15 +76,16 @@ python topgn.py e2e4 e7e5 g1f3
 | `perft.h/.cpp` | Perft node counting for move generator testing |
 | `eval.h/.cpp` | Piece values, piece-square tables, tapered evaluation |
 | `search.h/.cpp` | Alpha-beta, quiescence, move ordering, iterative deepening |
+| `tt.h/.cpp` | Transposition table: entries, probe, store, clear |
 | `uci.h/.cpp` | UCI command loop |
 | `main.cpp` | Entry point: initializes tables, starts the UCI loop |
-| `tests.cpp` | Unit tests: attacks, move generation, perft, make/unmake, eval, search, UCI |
+| `tests.cpp` | Unit tests: attacks, move generation, perft, make/unmake, Zobrist keys, eval, search, UCI |
 | `selfplay.ps1`, `topgn.py` | Self-play and PGN conversion tools |
 
 ## Roadmap
 
-- [ ] Finish Zobrist hashing and keep the key updated incrementally in `doMove`
-- [ ] Transposition table
+- [x] Zobrist hashing with incremental updates in `doMove`
+- [x] Transposition table with TT move ordering
 - [ ] Repetition and 50-move rule detection
 - [ ] Better move ordering (killer moves, history heuristic)
 - [ ] `stop` command and `info` output during search

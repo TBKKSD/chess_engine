@@ -29,6 +29,7 @@ void uciLoop() {
         }
         else if (token == "ucinewgame") {
             parseFEN(pos, START_FEN);
+            ttClear();
         }
         else if (token == "position") {
             handlePosition(pos, ss);

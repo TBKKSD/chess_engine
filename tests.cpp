@@ -9,6 +9,7 @@
 #include "eval.h"
 #include "search.h"
 #include "uci.h"
+#include "tt.h"
 #include <sstream>
 #include <vector>
 #include <chrono>
@@ -901,6 +902,7 @@ void testZobrist() {
 
 int main() {
     initZobrist();
+    ttInit(16);
     initAttacksTables();
     testAttackTables();
     testMoveGen();

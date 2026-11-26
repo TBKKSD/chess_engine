@@ -4,6 +4,7 @@
 #include "type.h"
 #include "movegen.h"
 #include "eval.h"
+#include "tt.h"
 
 constexpr int MATE_SCORE = 30000;
 constexpr int INF        = 31000;
@@ -19,5 +20,5 @@ constexpr int MVV_LVA[6][6] = {
 
 int  search(Position &pos, int depth, int alpha, int beta, int ply);
 int  quiescence(Position &pos, int alpha, int beta);
-void orderMoves(const Position &pos, MoveList &list);
+void orderMoves(const Position &pos, MoveList &list, Move ttMove = 0);
 Move searchPosition(Position &pos, int maxDepth, int timeLimitMs = 0);

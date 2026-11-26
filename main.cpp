@@ -5,6 +5,7 @@
 int main() {
     std::cout << std::unitbuf;
     initZobrist();
+    ttInit(64);
     initAttacksTables();
     uciLoop();
     return 0;
